@@ -351873,7 +351873,7 @@
     "Trio sends this profile's basal rates to the pump and starts using its carb ratios, insulin sensitivities and glucose targets right away." : {
 
     },
-    "Trio uses the new settings, but could not store them with the active profile. Save again to retry." : {
+    "Failed to import therapy settings. Trio cannot loop until they are imported. Restart Trio to try again." : {
 
     },
     "Scheduled Switches" : {
