@@ -31,7 +31,7 @@
 [submodule "OmnipodKit"]
 	path = OmnipodKit
 	url = https://github.com/manu-d6s/OmnipodKit
-	branch = o5-early-control-experiment
+	branch = o5-g7-cgm
 [submodule "AccuChekKit"]
 	path = AccuChekKit
 	url = https://github.com/loopandlearn/AccuChekKit
