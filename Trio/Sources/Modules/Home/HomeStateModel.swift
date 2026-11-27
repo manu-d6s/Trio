@@ -11,6 +11,7 @@ import LibreTransmitter
 import LoopKit
 import LoopKitUI
 import Observation
+import OmnipodKit
 import SwiftDate
 import SwiftUI
 
@@ -923,6 +924,13 @@ extension Home {
             case let accuChek as AccuChekCgmManager:
                 return accuChek.state.cgmEndTime
 
+            case let podG7 as OmniPodG7CGMManager:
+                // As for G7: in the grace period, count down to the end of the session.
+                if let exp = podG7.sensorExpiresAt, exp > Date.now {
+                    return exp
+                }
+                return podG7.sensorEndsAt ?? podG7.sensorExpiresAt
+
             default:
                 return nil
             }
@@ -967,6 +975,12 @@ extension Home {
                     return warmupCompleted
                 }
                 return nil
+
+            case let podG7 as OmniPodG7CGMManager:
+                guard let ends = podG7.sensorFinishesWarmupAt, ends > Date.now else {
+                    return nil
+                }
+                return ends
 
             default:
                 return nil
