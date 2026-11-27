@@ -8,6 +8,7 @@ import LibreLoop
 import LibreTransmitter
 import LoopKit
 import LoopKitUI
+import OmnipodKit
 import SyaiKit
 
 final class PluginSource: GlucoseSource {
@@ -289,6 +290,9 @@ extension PluginSource: CGMManagerDelegate {
                 sensorActivatedAt = cgmTransmitterManager.state.cgmStartTime
                 sensorStartDate = cgmTransmitterManager.state.cgmStartTime
                 sensorTransmitterID = cgmTransmitterManager.state.sensorInfo?.serialNumber
+            } else if let cgmTransmitterManager = cgmManager as? OmniPodG7CGMManager {
+                sensorActivatedAt = cgmTransmitterManager.sensorActivatedAt
+                sensorStartDate = cgmTransmitterManager.sensorActivatedAt
             } else if let cgmTransmitterManager = cgmManager as? EversenseCGMManager {
                 sensorActivatedAt = cgmTransmitterManager.state.activatedAt
                 sensorStartDate = cgmTransmitterManager.state.activatedAt

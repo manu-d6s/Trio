@@ -40,8 +40,8 @@
 	branch = trio-next-dev
 [submodule "OmnipodKit"]
 	path = OmnipodKit
-	url = https://github.com/kristinkand/OmnipodKit.git
-	branch = untethered-personal
+	url = https://github.com/manu-d6s/OmnipodKit
+	branch = watch-pod-g7
 [submodule "AccuChekKit"]
 	path = AccuChekKit
 	url = https://github.com/loopandlearn/AccuChekKit

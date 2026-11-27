@@ -11,6 +11,7 @@ import LibreTransmitter
 import LoopKit
 import LoopKitUI
 import Observation
+import OmnipodKit
 import SwiftDate
 import SwiftUI
 import SyaiKit
@@ -967,6 +968,13 @@ extension Home {
             case let syai as SyaiCGMManager:
                 return syai.sensorExpirationDate
 
+            case let podG7 as OmniPodG7CGMManager:
+                // As for G7: in the grace period, count down to the end of the session.
+                if let exp = podG7.sensorExpiresAt, exp > Date.now {
+                    return exp
+                }
+                return podG7.sensorEndsAt ?? podG7.sensorExpiresAt
+
             default:
                 return nil
             }
@@ -1014,6 +1022,12 @@ extension Home {
 
             case let syai as SyaiCGMManager:
                 return syai.sensorWarmupEndDate
+
+            case let podG7 as OmniPodG7CGMManager:
+                guard let ends = podG7.sensorFinishesWarmupAt, ends > Date.now else {
+                    return nil
+                }
+                return ends
 
             default:
                 return nil
