@@ -94,6 +94,11 @@ func watchCGMReaderState(_ configuration: SharedDeviceConfiguration) -> [String:
     return state
 }
 
+/// Whether this CGM's readings come over the pump's link, so that no sensor link wakes Trio at each reading.
+func watchCGMReadsThroughPump(_ manager: CGMManager?) -> Bool {
+    manager is OmniPodG7CGMManager
+}
+
 /// When the sensor's session ends, as the phone's home header counts it (into the grace period once expired).
 func watchCGMExpiresAt(_ manager: CGMManager?) -> Date? {
     if let podG7 = manager as? OmniPodG7CGMManager {

@@ -155,6 +155,10 @@ import WatchKit
     /// The workout's newest heart rate, beats per minute, for the minimal screen.
     var heartRate: Double?
     @ObservationIgnored var workoutKeepAlive: UntetheredWorkoutKeepAlive?
+    /// Asks the pod for its sensor's readings while the CGM reads through the pod (`startPodGlucoseTimer`).
+    @ObservationIgnored var podGlucoseTimer: Timer?
+    /// When the pod was last asked for glucose.
+    @ObservationIgnored var podGlucoseAskedAt: Date?
     /// The last start had no permission or failed: tried again only with Trio in front, where watchOS can ask.
     @ObservationIgnored var workoutStartFailed = false
     /// The hand-back offer the warning was set for (`updateHandbackWarning`).
@@ -1066,6 +1070,56 @@ import WatchKit
         // LoopKit#685; without a delegate it only stops the sensor link.
         Task { @MainActor in await cgm.delete() }
         cgmManager = nil
+        stopPodGlucoseTimer()
+    }
+
+    // MARK: - A CGM that reads through the pod
+
+    /// How often the timer looks whether a reading is due.
+    static let podGlucoseTick: TimeInterval = 30
+    /// The pod reads its sensor every 5 minutes; a little later the pod has the reading.
+    static let podGlucoseDueAfter: TimeInterval = 5 * 60 + 15
+    /// The pause before the pod is asked again when it had no new reading.
+    static let podGlucoseRetry: TimeInterval = 60
+
+    /// A sensor the pod reads has no link of its own to wake Trio at each reading, so a timer asks the pod. It
+    /// fires only while Trio runs: in Extended Watch Mode, or with Trio in front.
+    func startPodGlucoseTimer() {
+        DispatchQueue.main.async {
+            self.podGlucoseTimer?.invalidate()
+            let timer = Timer(timeInterval: Self.podGlucoseTick, repeats: true) { [weak self] _ in
+                self?.readPodGlucoseIfDue()
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            self.podGlucoseTimer = timer
+            self.readPodGlucoseIfDue()
+        }
+    }
+
+    func stopPodGlucoseTimer() {
+        DispatchQueue.main.async {
+            self.podGlucoseTimer?.invalidate()
+            self.podGlucoseTimer = nil
+            self.podGlucoseAskedAt = nil
+        }
+    }
+
+    /// Asks the pod for glucose when its next reading should be there. A new reading comes back through
+    /// `cgmManager(_:hasNew:)` and loops.
+    func readPodGlucoseIfDue(now: Date = Date()) {
+        guard isActive, !isLooping, !data.podEnded, let cgm = cgmManager, watchCGMReadsThroughPump(cgm) else { return }
+        if let quietUntil = podQuietUntil, now < quietUntil { return }
+        let newest = data.glucose.map(\.dateString).max()
+        guard Self.podGlucoseReadIsDue(newestReading: newest, askedAt: podGlucoseAskedAt, now: now) else { return }
+        podGlucoseAskedAt = now
+        Self.trace("asking the pod for glucose")
+        cgm.fetchNewDataIfNeeded { _ in }
+    }
+
+    static func podGlucoseReadIsDue(newestReading: Date?, askedAt: Date?, now: Date) -> Bool {
+        if let askedAt, now.timeIntervalSince(askedAt) < podGlucoseRetry { return false }
+        guard let newestReading else { return true }
+        return now.timeIntervalSince(newestReading) >= podGlucoseDueAfter
     }
 
     func install(_ cgm: CGMManager) {
@@ -1073,6 +1127,7 @@ import WatchKit
         cgm.delegateQueue = .main
         cgmManager = cgm
         saveCGMState()
+        if watchCGMReadsThroughPump(cgm) { startPodGlucoseTimer() }
         // a CGM set up with Trio in front checks its acquisition at once, as on every wake
         DispatchQueue.main.async {
             if WKApplication.shared().applicationState == .active { watchCGMRecheckAcquisition(cgm) }
