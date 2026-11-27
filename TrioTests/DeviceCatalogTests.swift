@@ -18,6 +18,7 @@ import UIKit
         "G5CGMManager": "DexG5Transmitter",
         "G6CGMManager": "DexG6Transmitter",
         "G7CGMManager": "G7CGMManager",
+        "OmniPodG7CGMManager": "OmnipodG7",
         "AccuChekCgmManager": "AccuChek",
         "EversenseCGMManager": "EversenseKit",
         "SyaiCGMManager": "SyaiCGMManager"

@@ -382,7 +382,7 @@ extension DeviceCatalog {
             icon: .uiBundle(identifier: "org.loopkit.G7SensorKitUI", asset: "g7")
         ),
         CGMCatalogEntry(
-            .managed(OmniPodG7CGMManager.self),
+            .managed(OmniPodG7CGMManager.self, id: "OmnipodG7"),
             manufacturer: .dexcom,
             name: "Dexcom G7 via Omnipod 5",
             icon: .uiBundle(identifier: "org.loopkit.G7SensorKitUI", asset: "g7")
