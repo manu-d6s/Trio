@@ -9,10 +9,12 @@ import OmnipodKit
 // and the phone keeps the pod.
 
 /// The kits' `pluginIdentifier`s. On LoopKit next-dev it is an instance property only, so the names are written out;
-/// they have to match the kits' (OmniPumpManager: "Omni", G7CGMManager: "G7CGMManager").
+/// they have to match the kits' (OmniPumpManager: "Omni", G7CGMManager: "G7CGMManager", OmniPodG7CGMManager:
+/// "OmnipodG7").
 enum WatchPluginIdentifier {
     static let omnipod = "Omni"
     static let g7 = "G7CGMManager"
+    static let podG7 = "OmnipodG7"
 }
 
 let watchPumpManagers: [String: (PumpManager & ExclusiveDeviceControl).Type] = [
@@ -20,8 +22,15 @@ let watchPumpManagers: [String: (PumpManager & ExclusiveDeviceControl).Type] = [
 ]
 
 let watchCGMManagers: [String: (CGMManager & DeviceConfigurationSharing).Type] = [
-    WatchPluginIdentifier.g7: G7CGMManager.self
+    WatchPluginIdentifier.g7: G7CGMManager.self,
+    WatchPluginIdentifier.podG7: OmniPodG7CGMManager.self
 ]
+
+/// Whether the watch has to pair with the sensor itself before this CGM gives readings. Not for a sensor the
+/// Omnipod 5 Pod reads: its readings come over the Pod's link.
+func watchCGMPairsWithSensor(_ configuration: SharedDeviceConfiguration) -> Bool {
+    configuration.managerIdentifier == WatchPluginIdentifier.g7
+}
 
 /// Why the sensor's newest message brought no reading the loop can use, when the sensor itself says so: the watch is
 /// in contact with it then, and "keep it near the sensor" points the wrong way (27 October, second tester: a
@@ -87,6 +96,10 @@ func watchCGMReaderState(_ configuration: SharedDeviceConfiguration) -> [String:
 
 /// When the sensor's session ends, as the phone's home header counts it (into the grace period once expired).
 func watchCGMExpiresAt(_ manager: CGMManager?) -> Date? {
+    if let podG7 = manager as? OmniPodG7CGMManager {
+        if let expires = podG7.sensorExpiresAt, expires > Date() { return expires }
+        return podG7.sensorEndsAt ?? podG7.sensorExpiresAt
+    }
     guard let g7 = manager as? G7CGMManager else { return nil }
     if let expires = g7.sensorExpiresAt, expires > Date() { return expires }
     return g7.sensorEndsAt ?? g7.sensorExpiresAt

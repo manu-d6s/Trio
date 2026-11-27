@@ -1018,9 +1018,11 @@ import WatchKit
                 Task {
                     await WatchLogger.shared.log("⌚️ Untethered: new sensor, already paired by the watch's reader: taking its key", force: true)
                 }
-            } else {
+            } else if watchCGMPairsWithSensor(configuration) {
                 Task { await WatchLogger.shared.log("⌚️ Untethered: new sensor, pairing the watch afresh", force: true) }
                 sensorPairingDue()
+            } else {
+                Task { await WatchLogger.shared.log("⌚️ Untethered: the CGM reads through the pod, no sensor pairing", force: true) }
             }
             store.update {
                 $0.cgmBuiltFrom = Self.plist(configuration.state)
