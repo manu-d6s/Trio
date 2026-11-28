@@ -401,6 +401,7 @@ extension UntetheredWatchManager {
         } else if let rate = determination.rate, let duration = determination.duration {
             tempLinkAt = Date()
             await freshPodLink(pump, for: "temp basal")
+            pumpWork = PumpWork()
             guard !loopHoldExpired else { throw UntetheredWatchError.noBackgroundTime }
             guard mayDose else { throw UntetheredWatchError.noPump }
             try await pump.enactTempBasal(
@@ -410,11 +411,17 @@ extension UntetheredWatchManager {
             sentTemp = true
             tempDoneAt = Date()
             if let connected = podConnectedAt, let linkAt = tempLinkAt, connected >= linkAt {
+                let work = pumpWork
                 let line = String(
-                    format: "⌚️ Untethered: temp basal done %.1f s after the pod connected (records saved in %.2f s, shown in %.2f s)",
+                    format: "⌚️ Untethered: temp basal done %.1f s after the pod connected (records saved in %.2f s, shown in %.2f s; " +
+                        "%d state changes in %d saves, %d status updates, %.2f s of the main queue)",
                     Date().timeIntervalSince(connected),
                     pumpEventsStoreTook,
-                    pumpEventsHandlingTook
+                    pumpEventsHandlingTook,
+                    work.stateUpdates,
+                    work.stateSaves,
+                    work.statusUpdates,
+                    work.seconds
                 )
                 Task { await WatchLogger.shared.log(line, force: true) }
             }
@@ -1488,8 +1495,19 @@ extension UntetheredWatchManager: PumpManagerDelegate {
 
     func pumpManager(_: PumpManager, didAdjustPumpClockBy _: TimeInterval) {}
 
+    /// A pod command changes the pump's state many times in a row, and each save writes the full session state on the
+    /// main queue, ahead of the dose records the pod's session waits for. Changes already queued share one save.
     func pumpManagerDidUpdateState(_: PumpManager) {
-        savePumpState()
+        pumpWork.stateUpdates += 1
+        guard !pumpStateSavePending else { return }
+        pumpStateSavePending = true
+        DispatchQueue.main.async {
+            self.pumpStateSavePending = false
+            let start = Date()
+            self.savePumpState()
+            self.pumpWork.stateSaves += 1
+            self.pumpWork.seconds += Date().timeIntervalSince(start)
+        }
     }
 
     func pumpManager(
@@ -1513,8 +1531,11 @@ extension UntetheredWatchManager: PumpManagerDelegate {
 
     func pumpManager(_ manager: PumpManager, didUpdate status: PumpManagerStatus, oldStatus _: PumpManagerStatus) {
         guard isSessionPump(manager as AnyObject) else { return }
+        let start = Date()
         updateBolusState(status)
         refresh()
+        pumpWork.statusUpdates += 1
+        pumpWork.seconds += Date().timeIntervalSince(start)
     }
 
     func deviceManager(

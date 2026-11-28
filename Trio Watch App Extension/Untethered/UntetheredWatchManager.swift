@@ -96,6 +96,17 @@ import WatchKit
     @ObservationIgnored var podConnectedAt: Date?
     /// How long the last batch of pump events took to save; the pod's session waits for it with its connection open.
     @ObservationIgnored var pumpEventsStoreTook: TimeInterval = 0
+    /// What the pump's state and status changes cost on the main queue since the last temp basal began.
+    struct PumpWork {
+        var stateUpdates = 0
+        var stateSaves = 0
+        var statusUpdates = 0
+        var seconds: TimeInterval = 0
+    }
+
+    @ObservationIgnored var pumpWork = PumpWork()
+    /// A save of the pump's state is queued on the main queue.
+    @ObservationIgnored var pumpStateSavePending = false
     /// The same, with the screens' update that follows the save.
     @ObservationIgnored var pumpEventsHandlingTook: TimeInterval = 0
     /// When an SMB was last left for the next reading after a long temp connection (c225): only once in a row.
