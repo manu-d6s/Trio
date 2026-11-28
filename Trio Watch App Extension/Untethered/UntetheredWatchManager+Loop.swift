@@ -409,6 +409,15 @@ extension UntetheredWatchManager {
             )
             sentTemp = true
             tempDoneAt = Date()
+            if let connected = podConnectedAt, let linkAt = tempLinkAt, connected >= linkAt {
+                let line = String(
+                    format: "⌚️ Untethered: temp basal done %.1f s after the pod connected (records saved in %.2f s, shown in %.2f s)",
+                    Date().timeIntervalSince(connected),
+                    pumpEventsStoreTook,
+                    pumpEventsHandlingTook
+                )
+                Task { await WatchLogger.shared.log(line, force: true) }
+            }
         }
         // as the phone: no SMB on top of a bolus still running, e.g. the meal bolus just started
         if data.grant?.dosingMode == dosingMode, let units = determination.units, units > 0,
@@ -1418,41 +1427,43 @@ extension UntetheredWatchManager: PumpManagerDelegate {
         let bolusFinalized = zip(events, identifiers).contains { event, id in
             event.type == .bolus && event.dose?.isMutable == false && wasMutable.contains(id)
         }
-        if replacePendingEvents {
-            let asserted = Set(identifiers)
-            let dropped = store.data.mutablePumpEventIDs.subtracting(asserted)
-            store.update {
-                $0.removePumpEvents(dropped)
-                $0.mutablePumpEventIDs = []
-            }
-            for id in dropped {
-                store.record(
-                    UntetheredRecord(key: UntetheredRecord.pumpEventKey(id), date: Date(), kind: .pumpEventDropped(id)),
-                    epoch: epoch
-                )
-            }
-        }
+        // one save for the whole batch: the pod's session waits for this completion with its connection open, and
+        // each save writes the full session state
+        let storeStart = Date()
+        var records: [UntetheredRecord] = []
         store.update { data in
-            for (event, id) in zip(events, identifiers) where event.dose?.isMutable == true {
-                data.mutablePumpEventIDs.insert(id)
+            if replacePendingEvents {
+                let dropped = data.mutablePumpEventIDs.subtracting(identifiers)
+                data.removePumpEvents(dropped)
+                data.mutablePumpEventIDs = []
+                for id in dropped {
+                    records.append(
+                        UntetheredRecord(key: UntetheredRecord.pumpEventKey(id), date: Date(), kind: .pumpEventDropped(id))
+                    )
+                }
             }
-        }
-        for (event, identifier) in zip(events, identifiers) {
-            store.update {
-                $0.upsertPumpEvent(
+            for (event, identifier) in zip(events, identifiers) {
+                if event.dose?.isMutable == true { data.mutablePumpEventIDs.insert(identifier) }
+                data.upsertPumpEvent(
                     id: identifier,
                     history: UntetheredAlgorithm.historyEvents(event, id: identifier, bolusIncrement: increment),
                     tdd: UntetheredAlgorithm.tddEvent(event, id: identifier, bolusIncrement: increment)
                 )
+                if let raw = try? PropertyListSerialization.data(fromPropertyList: event.rawValue, format: .binary, options: 0) {
+                    records.append(
+                        UntetheredRecord(key: UntetheredRecord.pumpEventKey(identifier), date: event.date, kind: .pumpEvent(raw))
+                    )
+                }
             }
-            if let raw = try? PropertyListSerialization.data(fromPropertyList: event.rawValue, format: .binary, options: 0) {
-                store.record(
-                    UntetheredRecord(key: UntetheredRecord.pumpEventKey(identifier), date: event.date, kind: .pumpEvent(raw)),
-                    epoch: epoch
-                )
+            for record in records {
+                data.pending[epoch, default: [:]][record.key] = record
+                data.entries[epoch, default: [:]][record.key] = record.syncEntry
+                data.unsent.insert(record.id)
             }
         }
+        pumpEventsStoreTook = Date().timeIntervalSince(storeStart)
         refresh()
+        pumpEventsHandlingTook = Date().timeIntervalSince(storeStart)
         completion(nil)
         if bolusFinalized { DispatchQueue.main.async { self.runLoop(.treatment) } }
     }

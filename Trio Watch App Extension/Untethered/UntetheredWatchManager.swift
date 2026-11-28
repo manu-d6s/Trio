@@ -94,6 +94,10 @@ import WatchKit
     @ObservationIgnored var podPrefetch: (task: Task<Date?, Never>, at: Date)?
     /// When the session's pod connection last came up, for the watchOS count's clock (c225).
     @ObservationIgnored var podConnectedAt: Date?
+    /// How long the last batch of pump events took to save; the pod's session waits for it with its connection open.
+    @ObservationIgnored var pumpEventsStoreTook: TimeInterval = 0
+    /// The same, with the screens' update that follows the save.
+    @ObservationIgnored var pumpEventsHandlingTook: TimeInterval = 0
     /// When an SMB was last left for the next reading after a long temp connection (c225): only once in a row.
     @ObservationIgnored var smbLeftAt: Date?
     /// A treatment came in while a loop ran; its determination follows.
