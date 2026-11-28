@@ -1371,10 +1371,13 @@ extension UntetheredWatchManager: PumpManagerDelegate {
         pumpManager.map { ($0 as AnyObject) === manager } ?? false
     }
 
-    /// As on the phone: the pod's heartbeat keeps the link, the CGM drives the loop.
-    func pumpManagerBLEHeartbeatDidFire(_: PumpManager) {}
+    /// A sensor with its own link wakes Trio at each reading and drives the loop, and the pump's heartbeat does
+    /// nothing. A CGM that reads through the pod has no such link: the pump's heartbeat is its wake.
+    func pumpManagerBLEHeartbeatDidFire(_: PumpManager) {
+        DispatchQueue.main.async { self.podWokeForGlucose() }
+    }
 
-    func pumpManagerMustProvideBLEHeartbeat(_: PumpManager) -> Bool { false }
+    func pumpManagerMustProvideBLEHeartbeat(_: PumpManager) -> Bool { watchCGMReadsThroughPump(cgmManager) }
 
     /// LoopKit#685: the old `pumpManagerWillDeactivate`, now awaited by the pump manager's `delete()`.
     func pumpManagerWantsDeletion(_ manager: PumpManager) async {
@@ -2472,8 +2475,10 @@ extension UntetheredWatchManager: CGMManagerDelegate {
         checkPodLink()
         readingArrivals.append(Date())
         if readingArrivals.count > 24 { readingArrivals.removeFirst(readingArrivals.count - 24) }
+        schedulePodGlucoseWake()
         Self.trace("reading handled, loop next")
         runLoop(.newGlucose)
+        endPodGlucoseWakeHold()
     }
 
     /// Steps along a reading's way to the pod, in the watch's log file at once (5 November, third tester: twice

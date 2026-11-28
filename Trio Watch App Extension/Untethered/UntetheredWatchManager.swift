@@ -159,6 +159,8 @@ import WatchKit
     @ObservationIgnored var podGlucoseTimer: Timer?
     /// When the pod was last asked for glucose.
     @ObservationIgnored var podGlucoseAskedAt: Date?
+    /// Lets go of the hold taken at the pod's wake (`podWokeForGlucose`).
+    @ObservationIgnored var podGlucoseWakeRelease: (() -> Void)?
     /// The last start had no permission or failed: tried again only with Trio in front, where watchOS can ask.
     @ObservationIgnored var workoutStartFailed = false
     /// The hand-back offer the warning was set for (`updateHandbackWarning`).
@@ -949,6 +951,7 @@ import WatchKit
         pumpManager = pump
         updateBolusState(pump.status)
         savePumpState()
+        schedulePodGlucoseWake()
     }
 
     /// Reads the pump; nil when it doesn't answer.
@@ -1082,9 +1085,42 @@ import WatchKit
     /// The pause before the pod is asked again when it had no new reading.
     static let podGlucoseRetry: TimeInterval = 60
 
-    /// A sensor the pod reads has no link of its own to wake Trio at each reading, so a timer asks the pod. It
-    /// fires only while Trio runs: in Extended Watch Mode, or with Trio in front.
+    /// How long the app is held running after the pod's wake, for the pump manager's glucose read to come back.
+    static let podGlucoseWakeHold: TimeInterval = 20
+
+    /// Asks the pump manager to wake Trio when the pod should have its next reading: it connects to the pod at
+    /// that time, which wakes a suspended app, and reads the pod's glucose (`pumpManagerBLEHeartbeatDidFire`).
+    /// Set again after each reading, so the wakes follow the sensor's schedule.
+    func schedulePodGlucoseWake() {
+        guard let cgm = cgmManager, watchCGMReadsThroughPump(cgm), let pump = pumpManager else { return }
+        pump.setBLEHeartbeatRequest(PumpHeartbeatRequest(
+            lastCGMReadingDate: data.glucose.map(\.dateString).max(),
+            expectedCGMReadingInterval: 5 * 60
+        ))
+    }
+
+    /// The pod's wake: the pump manager is reading the pod's glucose. The app is held running until the reading
+    /// has started its loop, and the timer doesn't ask the pod a second time.
+    func podWokeForGlucose(now: Date = Date()) {
+        guard isActive, let cgm = cgmManager, watchCGMReadsThroughPump(cgm) else { return }
+        Self.trace("the pod's wake: reading its glucose")
+        podGlucoseAskedAt = now
+        endPodGlucoseWakeHold()
+        podGlucoseWakeRelease = Self.holdProcess(
+            reason: "Untethered: pod glucose after the pod's wake",
+            upTo: Self.podGlucoseWakeHold
+        )
+    }
+
+    func endPodGlucoseWakeHold() {
+        podGlucoseWakeRelease?()
+        podGlucoseWakeRelease = nil
+    }
+
+    /// The timer asks the pod while Trio runs: in Extended Watch Mode, or with Trio in front, where the pump
+    /// manager's wake is off.
     func startPodGlucoseTimer() {
+        schedulePodGlucoseWake()
         DispatchQueue.main.async {
             self.podGlucoseTimer?.invalidate()
             let timer = Timer(timeInterval: Self.podGlucoseTick, repeats: true) { [weak self] _ in
@@ -1101,6 +1137,7 @@ import WatchKit
             self.podGlucoseTimer?.invalidate()
             self.podGlucoseTimer = nil
             self.podGlucoseAskedAt = nil
+            self.endPodGlucoseWakeHold()
         }
     }
 
