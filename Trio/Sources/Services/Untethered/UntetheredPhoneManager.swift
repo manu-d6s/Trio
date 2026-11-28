@@ -1456,11 +1456,6 @@ final class UntetheredPhoneManager: ObservableObject, Injectable {
         var failed = false
         let errorHandler: (Error) -> Void = { [weak self] error in
             warning(.watch, "Untethered: sending failed: \(error.localizedDescription)")
-            if case .commit = message, !failed {
-                failed = true
-                DispatchQueue.main.async { self?.retryCommit(message, epoch: epoch) }
-                return
-            }
             guard case .prepare = message, !failed else { return }
             failed = true
             DispatchQueue.main.async { self?.retryPrepare(message, epoch: epoch, why: error.localizedDescription) }
@@ -1468,6 +1463,9 @@ final class UntetheredPhoneManager: ObservableObject, Injectable {
         for part in UntetheredChunks.split(payload) ?? [payload] {
             session.sendMessage(part, replyHandler: replyHandler, errorHandler: errorHandler)
         }
+        // a commit can get neither a reply nor an error (a watch that left the front as it was sent): it goes again
+        // until the takeover ends the start
+        if case .commit = message { retryCommit(message, epoch: epoch) }
     }
 
     // MARK: - Remote commands
